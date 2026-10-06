@@ -82,37 +82,46 @@ for i in useful_keys:
 columns = columns[:-1] + ")"
 #print(columns)
 
+years = []
 
+process = False
 
-for i in range(2,7):
-    cursor.execute("DROP TABLE IF EXISTS YEAR_202"+str(i))
-    cursor.execute("CREATE TABLE IF NOT EXISTS YEAR_202"+str(i)+columns)
+if process:
+    for i in range(2,6):
+        years.append("YEAR_202"+str(i))
+        cursor.execute("DROP TABLE IF EXISTS YEAR_202"+str(i))
+        cursor.execute("CREATE TABLE IF NOT EXISTS YEAR_202"+str(i)+columns)
 
-for root, dirs, files in os.walk('cves'):
-    for file in files:
-        file_path = os.path.join(root, file)
-        year = root[5:9]
-        with open(file_path) as f:
-            data = json.load(f)
-            data_dict = {}
-            process_dict(data, data_dict)
-            insert_dict = {}
-            for key in useful_keys:
-                if (key in data_dict):
-                    if (data_dict[key] in empty_values):
-                        insert_dict[key] = None
+    for root, dirs, files in os.walk('cves'):
+        for file in files:
+            file_path = os.path.join(root, file)
+            year = root[5:9]
+            with open(file_path) as f:
+                data = json.load(f)
+                data_dict = {}
+                process_dict(data, data_dict)
+                insert_dict = {}
+                for key in useful_keys:
+                    if (key in data_dict):
+                        if (data_dict[key] in empty_values):
+                            insert_dict[key] = None
+                        else:
+                            insert_dict[key] = data_dict[key]
+                        
                     else:
-                        insert_dict[key] = data_dict[key]
-                    
-                else:
-                    insert_dict[key] = None
-            if (None in insert_dict.values() and ("vectorString" in data_dict.keys()) and (data_dict["vectorString"]!="null")):
-                process_vector_string(data_dict["vectorString"], insert_dict)
-            insert_query = "INSERT INTO YEAR_"+str(year)+" ("+(', '.join(useful_keys))+") "+"VALUES ("+("?, "*len(useful_keys))[:-2]+")"
-            #print(insert_query)
-            cursor.execute(insert_query, list(insert_dict.values()))
-conn.commit()
+                        insert_dict[key] = None
+                if (None in insert_dict.values() and ("vectorString" in data_dict.keys()) and (data_dict["vectorString"]!="null")):
+                    process_vector_string(data_dict["vectorString"], insert_dict)
+                insert_query = "INSERT INTO YEAR_"+str(year)+" ("+(', '.join(useful_keys))+") "+"VALUES ("+("?, "*len(useful_keys))[:-2]+")"
+                #print(insert_query)
+                cursor.execute(insert_query, list(insert_dict.values()))
+    conn.commit()
+else:
+    for i in range(2,6):
+        years.append("YEAR_202"+str(i))
 
-
-
-
+cleanup = False
+if cleanup:
+    for year in years:
+        cursor.execute("DELETE FROM "+year+" WHERE datePublished IS NULL")
+        conn.commit()

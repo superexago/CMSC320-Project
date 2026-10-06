@@ -1,1 +1,3 @@
 .vscode
+database.sqlite
+.ipynb_checkpoints
