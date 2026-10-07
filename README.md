@@ -11,8 +11,6 @@ No `requirements.txt` so no need for any python venv setup
 # source .venv/bin/activate
 # python -m pip install --upgrade pip
 # python -m pip install -r requirements.txt
-git config core.hooksPath .githooks     # Setup precommit cleaning for .ipynb
-chmod +x .githooks/pre-commit           # Lets the precommit run properly
 ```
 
 Setup Sqlite Database
@@ -21,8 +19,7 @@ python gather.py    # Creates database.sqlite
 ```
 
 ### Automate Jupyter Notebook Cleaning (Pre-commit Hook)
-
-To prevent messy Git diffs and keep notebook outputs from bloating the repository, please set up the local Git hook. This automatically strips notebook cell outputs every time you run `git commit` (can `-n` to skip).
+Auto-strips notebook cell outputs every time you run `git commit` (can `-n` to skip).
 ```bash
 # Append to end to .git/hooks/pre-commit (don't run multiple times)
 cat pre-commit >> .git/hooks/pre-commit
