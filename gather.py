@@ -66,7 +66,7 @@ DEFAULT_VECTOR_VALUES = {
     "N": "None",
     "L": "Low",
     "P": "Partial",
-    "C": "Complete",
+    "C": "Changed",
     "M": "Medium",
     "H": "High",
     "U": "Unchanged",
