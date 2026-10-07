@@ -2,6 +2,7 @@
 # import csv    # DISABLED: writing dropped records to a CSV file
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from collections import Counter
@@ -42,7 +43,8 @@ COLUMNS = [
     "scope",
     "userInteraction",
 ]
-STRING_COLUMNS = [column for column in COLUMNS if column != "baseScore"]
+STRING_COLUMNS = [column for column in COLUMNS if not(column == "baseScore" or column == "datePublished" or column == "cveId" or column == "dataVersion")]
+FLOAT_COLUMNS = ["dataVersion", "baseScore"]
 VECTOR_KEY_TRANSLATION = {
     "AV": "attackVector",
     "AC": "attackComplexity",
@@ -155,15 +157,52 @@ def replace_missing_value(
 
 def normalize_string_values(record: dict[str, Any]) -> None:
     """Capitalize string columns and standardize attack-vector labels."""
+    # Non-identifier string columns are capitalized for consistency
     for column in STRING_COLUMNS:
         value = record[column]
         if isinstance(value, str):
             record[column] = value.capitalize()
+
+    # Adjacent Network == Adjacent so...
     attack_vector = record["attackVector"]
     if isinstance(attack_vector, str):
         record["attackVector"] = ATTACK_VECTOR_REPLACEMENTS.get(
             attack_vector, attack_vector
         )
+
+
+def normalize_date(value: Any) -> str:
+    """Normalize an ISO-8601 publication date to a UTC timestamp with time."""
+    if not isinstance(value, str):
+        raise DroppedRecordError("datePublished is not a valid timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise DroppedRecordError("datePublished is not a valid timestamp") from error
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def normalize_special_values(record: dict[str, Any]) -> None:
+    """Normalize identifier, numeric fields, and publication timestamps."""
+    # Normalize identifier columns (all uppercase)
+    for column in ("cveId", "cweId"):
+        value = record[column]
+        if isinstance(value, str):
+            record[column] = value.upper()
+
+    # Normalize numeric columns
+    for column in FLOAT_COLUMNS:
+        value = record[column]
+        if value not in EMPTY_VALUES:
+            record[column] = float(value)
+
+    # Normalize the publication date to a UTC timestamp
+    if record["datePublished"] not in EMPTY_VALUES:
+        record["datePublished"] = normalize_date(record["datePublished"])
 
 
 def normalize_record(data: dict[str, Any]) -> dict[str, Any]:
@@ -186,7 +225,9 @@ def normalize_record(data: dict[str, Any]) -> dict[str, Any]:
     vector = flattened.get("vectorString")
     if vector not in EMPTY_VALUES:
         translate_vector(str(vector), record)
+
     normalize_string_values(record)
+    normalize_special_values(record)
 
     for key, error_message in REQUIRED_FIELDS.items():
         if record[key] in EMPTY_VALUES:
@@ -198,7 +239,7 @@ def normalize_record(data: dict[str, Any]) -> dict[str, Any]:
 def create_tables(connection: sqlite3.Connection) -> None:
     """Create the per-year tables with the shared CVE schema."""
     column_sql = ", ".join(
-        f"{column} {'REAL' if column == 'baseScore' else 'TEXT'}"
+        f"{column} {'REAL' if column in FLOAT_COLUMNS else 'TEXT'}"
         f"{' PRIMARY KEY' if column == 'cveId' else ''}"
         for column in COLUMNS
     )
