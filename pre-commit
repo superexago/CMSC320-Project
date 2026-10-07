@@ -1,0 +1,15 @@
+#!/bin/bash
+# HOOK START ===========================================
+# Extract all staged Jupyter notebooks
+STAGED_NOTEBOOKS=$(git diff --name-only --cached | grep '\.ipynb$')
+
+for notebook in $STAGED_NOTEBOOKS; do
+    if [ -f "$notebook" ]; then
+        echo "Cleaning $notebook using nbconvert..."
+        # Run nbconvert to wipe output cells in place
+        jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace "$notebook"
+        # Re-stage the now-cleaned notebook file
+        git add "$notebook"
+    fi
+done
+# HOOK END =============================================
