@@ -1,11 +1,10 @@
 """Build the CVE SQLite database from the JSON records in ``cves/``."""
-import csv
+# import csv    # DISABLED: writing dropped records to a CSV file
 import json
 import sqlite3
 from pathlib import Path
 from typing import Any
 from collections import Counter
-
 
 # Configuration
 DATA_DIRECTORY = Path(__file__).parent / "cves"
@@ -162,7 +161,9 @@ def normalize_string_values(record: dict[str, Any]) -> None:
             record[column] = value.capitalize()
     attack_vector = record["attackVector"]
     if isinstance(attack_vector, str):
-        record["attackVector"] = ATTACK_VECTOR_REPLACEMENTS.get(attack_vector, attack_vector)
+        record["attackVector"] = ATTACK_VECTOR_REPLACEMENTS.get(
+            attack_vector, attack_vector
+        )
 
 
 def normalize_record(data: dict[str, Any]) -> dict[str, Any]:
@@ -253,8 +254,8 @@ def main() -> None:
     print("--------|--------")
     for error, count in counts.items():
         print(f"{count:<7} | {error}")
-    
-    # DISABLED: Write the dropped records to a CSV file
+
+    # DISABLED: writing dropped records to a CSV file
     # write_dropped_records(dropped)
 
 
