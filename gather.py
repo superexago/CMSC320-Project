@@ -1,5 +1,5 @@
 """Build the CVE SQLite database from the JSON records in ``cves/``."""
-# import csv    # DISABLED: writing dropped records to a CSV file
+import csv    # DISABLED: writing dropped records to a CSV file
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -54,9 +54,9 @@ VECTOR_KEY_TRANSLATION = {
     "C": "confidentialityImpact",
     "I": "integrityImpact",
     "A": "availabilityImpact",
-    "SC": "confidentialityImpact",
-    "SI": "integrityImpact",
-    "SA": "availabilityImpact",
+    "VC": "confidentialityImpact",
+    "VI": "integrityImpact",
+    "VA": "availabilityImpact",
 }
 VECTOR_VALUE_TRANSLATION = {
     "attackVector": {"N": "Network", "A": "Adjacent", "L": "Local", "P": "Physical"},
@@ -73,9 +73,9 @@ DEFAULT_VECTOR_VALUES = {
     "R": "Required",
 }
 KEY_REPLACEMENTS = {
-    "subAvailabilityImpact": "availabilityImpact",
-    "subConfidentialityImpact": "confidentialityImpact",
-    "subIntegrityImpact": "integrityImpact",
+    "vulnAvailabilityImpact": "availabilityImpact",
+    "vulnConfidentialityImpact": "confidentialityImpact",
+    "vulnIntegrityImpact": "integrityImpact",
 }
 BASE_SEVERITY_BREAKPOINTS = (
     (4.0, "Low"),
@@ -111,7 +111,8 @@ def flatten_value(key: str, value: Any, target: dict[str, Any]) -> None:
             for index, item in enumerate(value):
                 flatten_value(f"{key}({index})", item, target)
     else:
-        target[key] = value
+        if (not (key in target.keys())):
+            target[key] = value
 
 
 def flatten_dict(source: dict[str, Any], target: dict[str, Any]) -> None:
@@ -140,8 +141,23 @@ def translate_vector(vector_string: str, target: dict[str, Any]) -> None:
                         value, value
                     )
             case "4.0" | "4.1":
-                # NOT IMPLEMENTED: CVSS v4.0 and v4.1 are not yet supported
-                raise DroppedRecordError(f"CVSS version {value} is not yet supported")
+                scope = False
+                for component in vector_list[1:]:
+                    if ":" not in component:
+                        continue
+                    short_key, value = component.split(":", 1)
+                    key = VECTOR_KEY_TRANSLATION.get(short_key)
+                    if(short_key in ["SC", "SI", "SA"] and value != 'N'):
+                        scope = True
+                    if key is None:
+                        continue
+                    target[key] = VECTOR_VALUE_TRANSLATION.get(key, DEFAULT_VECTOR_VALUES).get(
+                        value, value
+                    )
+                if scope:
+                    target['scope'] = 'Changed'
+                else:
+                    target['scope'] = 'Unchanged'
             case _:
                 raise DroppedRecordError(f"CVSS version {value} is not recognized") 
     else:
