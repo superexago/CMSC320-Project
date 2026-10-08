@@ -122,17 +122,30 @@ def flatten_dict(source: dict[str, Any], target: dict[str, Any]) -> None:
 
 def translate_vector(vector_string: str, target: dict[str, Any]) -> None:
     """Decode CVSS vector abbreviations and add their values to ``target``."""
-    for component in vector_string.split("/"):
-        if ":" not in component:
-            continue
-        short_key, value = component.split(":", 1)
-        key = VECTOR_KEY_TRANSLATION.get(short_key)
-        if key is None:
-            continue
-        target[key] = VECTOR_VALUE_TRANSLATION.get(key, DEFAULT_VECTOR_VALUES).get(
-            value, value
-        )
+    # Check if CVSS verison is a supported version
+    vector_list = vector_string.split("/")
+    short_key, value = vector_list[0].split(":", 1)
 
+    if short_key == "CVSS":
+        match value:
+            case "3.0" | "3.1":
+                for component in vector_list[1:]:
+                    if ":" not in component:
+                        continue
+                    short_key, value = component.split(":", 1)
+                    key = VECTOR_KEY_TRANSLATION.get(short_key)
+                    if key is None:
+                        continue
+                    target[key] = VECTOR_VALUE_TRANSLATION.get(key, DEFAULT_VECTOR_VALUES).get(
+                        value, value
+                    )
+            case "4.0" | "4.1":
+                # NOT IMPLEMENTED: CVSS v4.0 and v4.1 are not yet supported
+                raise DroppedRecordError(f"CVSS version {value} is not yet supported")
+            case _:
+                raise DroppedRecordError(f"CVSS version {value} is not recognized") 
+    else:
+        raise DroppedRecordError(f"CVSS != {short_key}")
 
 def severity_for_score(score: float) -> str:
     """Return the CVSS severity label corresponding to a base score."""
@@ -298,6 +311,21 @@ def main() -> None:
 
     # DISABLED: writing dropped records to a CSV file
     # write_dropped_records(dropped)
+
+    # TO-DELETE: Print example for each unique error
+    print("\nExample dropped records:")
+    examples = {}
+    length = len(counts)    # Number of unique errors
+    for cve_id, error in dropped:
+        if error not in examples:
+            examples[error] = cve_id
+
+            # Stop after getting the example for each unique error
+            length -= 1
+            if length == 0:
+                break
+    for error, cve_id in examples.items():
+        print(f"{cve_id:<15} | {error}")
 
 
 if __name__ == "__main__":
