@@ -92,6 +92,20 @@ ATTACK_VECTOR_REPLACEMENTS = {
     "Adjacent": "Adjacent",
     "Adjacent network": "Adjacent",
 }
+BASE_SEVERITY_REPLACEMENTS = {
+    "None": "None",
+    "Low": "Low",
+    "Medium": "Medium",
+    "Moderate": "Medium",
+    "High": "High",
+    "Critical": "Critical",
+}
+USER_INTERACTION_REPLACEMENTS = {
+    "None": "None",
+    "Required": "Required",
+    "Active": "Required",
+    "Passive": "Required",
+}
 
 
 class DroppedRecordError(ValueError):
@@ -197,6 +211,20 @@ def normalize_string_values(record: dict[str, Any]) -> None:
     if isinstance(attack_vector, str):
         record["attackVector"] = ATTACK_VECTOR_REPLACEMENTS.get(
             attack_vector, attack_vector
+        )
+
+    # Moderate == Medium so...
+    base_severity = record["baseSeverity"]
+    if isinstance(base_severity, str):
+        record["baseSeverity"] = BASE_SEVERITY_REPLACEMENTS.get(
+            base_severity, base_severity
+        )
+
+    # Active and Passive == Required so...
+    user_interaction = record["userInteraction"]
+    if isinstance(user_interaction, str):
+        record["userInteraction"] = USER_INTERACTION_REPLACEMENTS.get(
+            user_interaction, user_interaction
         )
 
 
