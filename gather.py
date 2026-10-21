@@ -13,9 +13,11 @@ DATABASE_PATH = Path(__file__).parent / "database.sqlite"
 DROPPED_CSV_PATH = Path(__file__).parent / "dropped.csv"
 YEARS = [2022, 2023, 2024, 2025]
 
-# Values that represent missing data and the replacement used for each field.
-EMPTY_VALUES = {"NULL", "null", "n/a", "UNKNOWN", "", None}
+# Values are compared after trimming whitespace and converting strings to uppercase.
+EMPTY_VALUES = {"", "NULL", "N/A", "NA", "UNKNOWN", "NONE"}
 MISSING_VALUE_REPLACEMENTS = {
+    "product": None,
+    "vendor": None,
     "availabilityImpact": "None",
     "confidentialityImpact": "None",
     "integrityImpact": "None",
@@ -111,7 +113,6 @@ USER_INTERACTION_REPLACEMENTS = {
 class DroppedRecordError(ValueError):
     """Raised when a CVE record cannot be inserted into the database."""
 
-
 def flatten_value(key: str, value: Any, target: dict[str, Any]) -> None:
     """Flatten nested JSON values into the key/value representation used here."""
     if isinstance(value, dict):
@@ -186,6 +187,11 @@ def severity_for_score(score: float) -> str:
             return severity
     raise ValueError(f"base score is outside the CVSS range: {score}")
 
+def is_empty_value(value: Any) -> bool:
+    """Return whether a value represents missing data."""
+    return value is None or (
+        isinstance(value, str) and value.strip().upper() in EMPTY_VALUES
+    )
 
 def replace_missing_value(
     key: str, record: dict[str, Any], flattened: dict[str, Any]
@@ -193,8 +199,13 @@ def replace_missing_value(
     """Return the configured replacement for a missing or empty field."""
     if key == "baseSeverity":
         score = flattened.get("baseScore")
-        if score is not None and score not in EMPTY_VALUES:
-            return severity_for_score(float(score))
+        if score is not None and not is_empty_value(score):
+            if score == 0:
+                return "None"
+            for breakpoint, severity in BASE_SEVERITY_BREAKPOINTS:
+                if score < breakpoint:
+                    return severity
+            raise ValueError(f"base score is outside the CVSS range: {score}")
     return MISSING_VALUE_REPLACEMENTS.get(key)
 
 
@@ -204,7 +215,7 @@ def normalize_string_values(record: dict[str, Any]) -> None:
     for column in STRING_COLUMNS:
         value = record[column]
         if isinstance(value, str):
-            record[column] = value.capitalize()
+            record[column] = value.strip().capitalize()
 
     # Adjacent Network == Adjacent so...
     attack_vector = record["attackVector"]
@@ -254,15 +265,15 @@ def normalize_special_values(record: dict[str, Any]) -> None:
     # Normalize numeric columns
     for column in FLOAT_COLUMNS:
         value = record[column]
-        if value not in EMPTY_VALUES:
+        if not is_empty_value(value):
             record[column] = float(value)
 
     # Normalize the publication date to a UTC timestamp
-    if record["datePublished"] not in EMPTY_VALUES:
+    if not is_empty_value(record["datePublished"]):
         record["datePublished"] = normalize_date(record["datePublished"])
 
 
-def normalize_record(data: dict[str, Any]) -> dict[str, Any]:
+def parse_record(data: dict[str, Any]) -> dict[str, Any]:
     """Flatten, rename, translate, and validate one CVE record."""
     flattened: dict[str, Any] = {}
     flatten_dict(data, flattened)
@@ -275,19 +286,19 @@ def normalize_record(data: dict[str, Any]) -> dict[str, Any]:
         value = flattened.get(key)
         record[key] = (
             replace_missing_value(key, record, flattened)
-            if value in EMPTY_VALUES
+            if is_empty_value(value)
             else value
         )
 
     vector = flattened.get("vectorString")
-    if vector not in EMPTY_VALUES:
+    if not is_empty_value(vector):
         translate_vector(str(vector), record)
 
     normalize_string_values(record)
     normalize_special_values(record)
 
     for key, error_message in REQUIRED_FIELDS.items():
-        if record[key] in EMPTY_VALUES:
+        if is_empty_value(record[key]):
             raise DroppedRecordError(error_message)
     record["baseScore"] = float(record["baseScore"])
     return record
@@ -316,7 +327,7 @@ def load_records(connection: sqlite3.Connection) -> list[tuple[str, str]]:
             source = json.load(file)
         cve_id = str(source.get("cveMetadata", {}).get("cveId", path.stem))
         try:
-            record = normalize_record(source)
+            record = parse_record(source)
         except DroppedRecordError as error:
             dropped.append((cve_id, str(error)))
             continue
